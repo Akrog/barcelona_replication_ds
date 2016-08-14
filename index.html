@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Cinder Replication Design Session</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+    <link rel="stylesheet" href="slides.css"></link>
+  </head>
+  <body>
+    <textarea id="source">
+
+layout: true
+name: title_layout
+class: title_slide
+
+---
+
+layout: true
+name: section_layout
+class: section_slide
+
+---
+
+layout: true
+name: content_layout
+class: content_slide
+
+---
+
+template: title_layout
+
+# Cinder Replication Design Session
+
+## Barcelona OpenStack Summit
+
+Ocata Release<br>
+October 27th 2016
+
+---
+
+# DESIGN SESSION
+
+## CINDER REPLICATION
+
+**Links:**
+
+- Etherpad: https://etherpad.openstack.org/p/ocata-cinder-summit-replication
+- Slides: https://akrog.github.io/barcelona_replication_ds
+
+**Topics:**
+
+- Existing bugs
+- Driver consistency
+- Support of Active-Active
+- Failback
+- Promote secondary
+
+---
+
+# REPLICATION BUGS
+
+## CINDER REPLICATION
+
+We should fix all bugs in Ocata:
+
+- API request has no `host` ➔ `KeyError` exception
+- There are unit tests for manager's `failover_host`:
+  - `InvalidReplicationTarget` for secondary to secondary failover ➔ Wrong `replication_status`
+  - `VolumeDriverException` ➔  Setting non existent attribute `service.status`
+  - On `volumes` DB update error ➔ Report failover success
+      - *What should we do?*
+- Some drivers don't support "default" value for `secondary_backend_id` ➔ Not documented
+- Freeze mechanism doesn't work
+
+---
+
+# FREEZE MECHANISM BUG
+
+## https://bugs.launchpad.net/cinder/+bug/1616974
+
+- Delete still works
+- Only prevents operations going through the scheduler
+- *Freeze* = *Disabled*
+- Some solutions, simple to complex:
+  - Drivers ignore operations when frozen
+  - Make API check service status on specific operations
+  - All operations go through the scheduler ➔ Stop them there
+      - Will allow us to also do real Disable of services
+      - To be effective API RPC calls would be sync ➔ Slower
+
+---
+
+# DRIVER CONSISTENCY
+
+## CINDER REPLICATION
+
+Key information missing from specs:
+
+- Support "default" value for `secondary_backend_id`
+- Volume's `replication_status`
+  - On creation ➔ `ReplicationStatus.DISABLED` or `ReplicationStatus.ENABLED`
+  - On failover ➔ `ReplicationStatus.FAILED_OVER`
+- On failover non replicated volume's status ➔ `"error"`
+
+---
+
+# Support of Active-Active
+
+## https://review.openstack.org/381835
+
+- Replication v2.2
+- New `failover` API endpoint accepting `host` and `cluster`
+- Backward compatible
+- We split `failover_host` in 2:
+  - `failover` ➔ Only makes changes to volumes at backend
+  - `failover_completed` ➔ Running driver points to new backend
+- Prevent unusable case:
+  - Replication enabled
+  - Active-Active enabled
+  - Driver doesn't implement new methods
+
+---
+
+# FAILBACK
+
+Is it enough failing over to "default"?
+
+- Fix drivers to support "default" as `secondary_backend_id`?
+- Document it: Amend specs or add to v2.2
+
+---
+
+# PROMOTE SECONDARY
+
+## .small-text[https://specs.openstack.org/openstack/cinder-specs/specs/newton/cheesecake-promote-backend.html]
+
+- API needs to tell drivers that the backend has been promoted:
+  - They need to change volumes' `replication_status`
+  - They many need to do other things:
+      - Change `replication_extended_status`, `replication_driver_data`...
+- `reset-active-backend` API sets `replication_status=disabled`
+  - Why default to disabled? We may have multiple replication backends
+- `replication-enable` API to change service's `replication_status`
+  - Field is only informative
+      - Not used by the scheduler
+      - Not used by drivers ➔ Report based on `replication_devices`
+- Why not use `cinder-manage service remove` command?
+
+---
+
+template: section_layout
+class: center bg_red
+
+![CC](assets/cc.svg)
+.medium-text[
+Except where otherwise noted, this work is licensed under
+
+http://creativecommons.org/licenses/by/4.0/
+]
+
+    </textarea>
+    <script src="remark.js" type="text/javascript"></script>
+    <script type="text/javascript">
+      var slideshow = remark.create({
+        ratio: '16:9',
+		slideNumberFormat: '%current%   <span class="designator"> Barcelona OpenStack Summit</span>',
+        countIncrementalSlides: false
+      });
+    </script>
+  </body>
+</html>
+
+<!-- vim: set ft=markdown : -->
